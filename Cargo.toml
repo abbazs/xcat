@@ -1,16 +1,12 @@
 [package]
-name = "xcat"
+name = "sdir"
 version = "0.1.0"
 edition = "2024"
-
-[[bin]]
-name = "xcat"  # This determines the binary name
-path = "src/main.rs"
-
+description = "A Rust tool that recursively traverses directories, maps file structures, and consolidates all file contents into a single output file for enhanced analysis with AI systems like Grok."
 [dependencies]
-clap = { version = "4.0", features = ["derive"] }
-colored = "2.0"
-ignore = "0.4"
+clap = { version = "4.4", features = ["derive"] }
+colored = "2.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-arboard = "3.0"
+ignore = "0.4"
+arboard = "3.3"
