@@ -1,190 +1,180 @@
-# xcat
+# sdir
 
-**Extended cat with tree visualization and clipboard integration**
+A CLI utility that combines file viewing, directory traversal, and clipboard operations. sdir functions as a multi-purpose command integrating the capabilities of tree, cat, and clipboard management tools.
 
-A hybrid CLI tool that intelligently handles both files and directories, combining the functionality of `cat`, `tree`, and `xclip` into a single utility.
+## Features
 
-## 🚀 Features
+- **File Mode**: View and copy file contents with a single command
+- **Directory Mode**: Generate tree-like visualizations of directory structures
+- **Colorized Output**: Better terminal visualization with colorized output
+- **Flexible Options**: Control depth, filtering, and output format
+- **Clipboard Integration**: Automatically copies output to your clipboard
+- **JSON Export**: Option to export the structure as JSON
 
-- **Smart path detection** - Auto-detects files vs directories
-- **Colorized terminal output** with emoji icons 🎨
-- **Automatic clipboard integration** - No more manual piping
-- **Multiple output formats** - Visual tree or JSON export
-- **Configurable filtering** - Control depth, file types, and exclusions
-- **File content embedding** - Include file contents in directory trees
-- **Gitignore respect** - Uses standard filters via ignore crate
+## Installation
 
-## 📋 Modes of Operation
+### Prerequisites
 
-### 1. File Mode (cat-like)
-- Reads and displays file contents with relative path formatting
-- Output format: `./<filename>` followed by file content
-- Automatically copies content to clipboard for easy sharing
-
-### 2. Directory Mode (tree-like)
-- Creates hierarchical visualizations of directory structures
-- Enhanced version of Unix `tree` with modern terminal styling
-- Supports both visual tree output and JSON representation
-- Can include file contents alongside the directory structure
-
-### 3. Clipboard Integration (xclip-like)
-- Automatically copies all output to system clipboard
-- Eliminates need for manual piping to clipboard utilities
-- Can be disabled with `--no-copy` flag when not needed
-
-## 📖 Usage Examples
+You need to have Rust and Cargo installed on your system. If you don't have them installed, you can get them from [rustup.rs](https://rustup.rs/).
 
 ```bash
-# Display current directory tree
-xcat
-
-# Display and copy file content
-xcat src/main.rs
-
-# Show only directories
-xcat --dirs-only
-
-# Export as JSON
-xcat --output json
-
-# Limit traversal depth
-xcat --max-depth 2
-
-# Include lock files (normally excluded)
-xcat --include-locks
-
-# Disable clipboard copying
-xcat --no-copy
-```
-
-## 🛠️ Installation
-
-### From Releases (Recommended)
-
-Download the appropriate binary for your system from the [releases page](https://github.com/abbazs/xcat/releases):
-
-#### Linux
-```bash
-# x86_64 (glibc) - Most common
-wget https://github.com/abbazs/xcat/releases/latest/download/xcat-linux-x86_64.tar.gz
-tar -xzf xcat-linux-x86_64.tar.gz
-sudo mv xcat /usr/local/bin/
-
-# x86_64 (musl) - Static binary
-wget https://github.com/abbazs/xcat/releases/latest/download/xcat-linux-x86_64-musl.tar.gz
-tar -xzf xcat-linux-x86_64-musl.tar.gz
-sudo mv xcat /usr/local/bin/
-
-# ARM64
-wget https://github.com/abbazs/xcat/releases/latest/download/xcat-linux-aarch64.tar.gz
-tar -xzf xcat-linux-aarch64.tar.gz
-sudo mv xcat /usr/local/bin/
-```
-
-#### macOS
-```bash
-# Intel Macs
-wget https://github.com/abbazs/xcat/releases/latest/download/xcat-macos-x86_64.tar.gz
-tar -xzf xcat-macos-x86_64.tar.gz
-sudo mv xcat /usr/local/bin/
-
-# Apple Silicon Macs
-wget https://github.com/abbazs/xcat/releases/latest/download/xcat-macos-aarch64.tar.gz
-tar -xzf xcat-macos-aarch64.tar.gz
-sudo mv xcat /usr/local/bin/
-```
-
-#### Windows
-1. Download `xcat-windows-x86_64.exe.zip` from releases
-2. Extract the zip file
-3. Move `xcat.exe` to a directory in your PATH
-
-### From Source
-
-```bash
-# Install Rust if you haven't already
+# Install Rust and Cargo
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-# Clone and build
-git clone https://github.com/abbazs/xcat.git
-cd xcat
-cargo build --release
-
-# Install
-sudo cp target/release/xcat /usr/local/bin/
 ```
 
-## 🔧 Command Line Options
+### Building from Source
 
+1. Clone this repository:
+
+    ```bash
+    git clone https://github.com/abbazs/sdir.git
+    cd sdir
+    ```
+
+2. Build the project:
+
+    ```bash
+    cargo build --release
+    ```
+
+3. The compiled binary will be available at `./target/release/sdir`
+
+4. (Optional) Install the binary to your system:
+
+    ```bash
+    cargo install --path .
+    ```
+
+## Usage
+
+### Basic Usage
+
+```bash
+# View directory structure (current directory by default)
+sdir
+
+# View specific directory structure
+sdir /path/to/directory
+
+# View file content
+sdir /path/to/file.txt
 ```
-Usage: xcat [OPTIONS] [PATH]
+
+### Command Line Options
+
+```text
+Usage: sdir [OPTIONS] [PATH]
 
 Arguments:
   [PATH]  Root directory or file path [default: .]
 
 Options:
-      --dirs-only        Show only directories
-      --max-depth <MAX_DEPTH>  Limit recursion depth
-      --output <OUTPUT>  Output JSON instead of tree view
-      --no-copy          Disable clipboard copy
-      --include-locks    Include lock files (default: ignored)
-  -h, --help             Print help
-  -V, --version          Print version
+      --dirs-only       Show only directories
+      --max-depth <N>   Limit recursion depth
+      --output <TYPE>   Output JSON instead of tree view
+      --no-copy         Disable clipboard copy
+      --include-locks   Include lock files (default: ignored)
+  -h, --help            Print help
+  -V, --version         Print version
 ```
 
-## 📝 Output Examples
+### Examples
 
-### File Mode
 ```bash
-$ xcat README.md
-./README.md
-# xcat
-Extended cat with tree visualization...
+# Show only directories
+sdir --dirs-only
+
+# Limit depth to 2 levels
+sdir --max-depth 2
+
+# Generate JSON output
+sdir --output json > structure.json
+
+# View file content
+sdir config.json
+
+# Include lock files
+sdir --include-locks
 ```
+
+## Output Examples
 
 ### Directory Mode
-```bash
-$ xcat --max-depth 2
-# tree structure of directory `my-project`
-📁 .
+
+```text
+# tree structure of directory `my_project`
+📁 ./my_project
 ├── 📁 src
 │   ├── 📄 main.rs
-│   └── 📄 lib.rs
+│   └── 📄 utils.rs
 ├── 📄 Cargo.toml
-├── 📄 Cargo.lock
 └── 📄 README.md
 ```
 
-### JSON Output
-```bash
-$ xcat --output json
+### File Mode
+
+```json
+./config.json
 {
-  "name": "my-project",
-  "path": ".",
-  "is_dir": true,
-  "children": [
-    {
-      "name": "src",
-      "path": "./src",
-      "is_dir": true,
-      "children": [...]
-    }
-  ]
+  "version": "1.0",
+  "settings": {
+    "debug": false,
+    "theme": "dark"
+  }
 }
 ```
 
-## 🤝 Contributing
+## Clipboard Support
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+The tool automatically copies the output to your clipboard. If you want to disable this functionality, use the `--no-copy` flag.
 
-## 📄 License
+## Building for Different Platforms
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+### Windows
 
-## 🙏 Acknowledgments
+```bash
+cargo build --release --target x86_64-pc-windows-msvc
+```
 
-- Built with [Rust](https://www.rust-lang.org/) 🦀
-- Uses [clap](https://github.com/clap-rs/clap) for CLI parsing
-- Uses [ignore](https://github.com/BurntSushi/ripgrep/tree/master/crates/ignore) for gitignore support
-- Uses [colored](https://github.com/mackwic/colored) for terminal colors
-- Uses [arboard](https://github.com/1Password/arboard) for clipboard integration
+### macOS
+
+```bash
+cargo build --release --target x86_64-apple-darwin
+```
+
+### Linux
+
+```bash
+cargo build --release --target x86_64-unknown-linux-gnu
+```
+
+## Troubleshooting
+
+### Missing Clipboard Dependencies
+
+On Linux, you might need additional dependencies for clipboard functionality:
+
+```bash
+# For Debian/Ubuntu
+sudo apt-get install xorg-dev libxcb-shape0-dev libxcb-xfixes0-dev
+
+# For Fedora
+sudo dnf install libxcb-devel
+```
+
+### Permission Issues
+
+If you encounter permission issues when running the tool:
+
+```bash
+# Make the binary executable
+chmod +x ./target/release/sdir
+```
+
+## Contributing
+
+Contributions are welcome! Feel free to submit issues or pull requests if you have ideas for improvements or new features.
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
