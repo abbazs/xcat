@@ -1,16 +1,44 @@
+/*
+ * sdir - A CLI tool for visualizing file/directory structures
+ * 
+ * This tool provides two main functionalities:
+ * 
+ * 1. File Mode:
+ *    - When provided with a file path, it reads the file's content
+ *    - Outputs the file path as ./<filename>
+ *    - Displays and copies the file content to the clipboard
+ * 
+ * 2. Directory Mode:
+ *    - When provided with a directory path, it creates a tree visualization
+ *    - Similar to the Unix 'tree' command but with additional features
+ *    - Supports colored output in the terminal
+ *    - Can generate JSON representation of the directory structure
+ *    - Copies the tree structure to clipboard automatically
+ *    - Includes file contents in the output if desired
+ * 
+ * Features:
+ *    - Directory traversal with customizable depth
+ *    - Directory-only filtering option
+ *    - Lock file filtering (can be disabled)
+ *    - JSON output option
+ *    - Automatic clipboard copying
+ *    - Colorized terminal output
+ */
+
 use clap::Parser;
 use colored::*;
-use ignore::WalkBuilder;
+use ignore::{DirEntry, WalkBuilder};
 use serde::Serialize;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 /// CLI Tree visualizer like the Unix `tree` command
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
 struct Args {
-    /// Root directory
+    /// Root directory or file path
     #[arg(default_value = ".")]
-    directory: String,
+    path: String,
 
     /// Show only directories
     #[arg(long)]
@@ -27,6 +55,10 @@ struct Args {
     /// Disable clipboard copy
     #[arg(long = "no-copy", default_value_t = false)]
     no_copy: bool,
+
+    /// Include lock files (default: ignored)
+    #[arg(long, default_value_t = false)]
+    include_locks: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -39,36 +71,24 @@ struct TreeNode {
 
 fn main() {
     let args = Args::parse();
-    let root_path = Path::new(&args.directory);
+    let input_path = Path::new(&args.path);
 
-    if !root_path.exists() || !root_path.is_dir() {
-        eprintln!("Error: '{}' is not a valid directory.", root_path.display());
+    if !input_path.exists() {
+        eprintln!("Error: '{}' does not exist.", input_path.display());
         std::process::exit(1);
     }
 
     let mut output_buffer = String::new();
 
-    if args.output.as_deref() == Some("json") {
-        let json_tree = build_json_tree(root_path, 0, args.max_depth, args.dirs_only);
-        let json = serde_json::to_string_pretty(&json_tree).unwrap();
-        println!("{}", json);
-        output_buffer = json;
+    if input_path.is_file() {
+        // Handle file input
+        process_file(input_path, &mut output_buffer);
+    } else if input_path.is_dir() {
+        // Handle directory input (original functionality)
+        process_directory(input_path, &args, &mut output_buffer);
     } else {
-        let heading = format!("# tree structure of directory {}", root_path.display());
-        println!("{}", heading);
-        println!("{}", root_path.display());
-
-        output_buffer.push_str(&format!("{}\n{}\n", heading, root_path.display()));
-        collect_tree_output(
-            root_path,
-            "".to_string(),
-            true,
-            0,
-            args.max_depth,
-            args.dirs_only,
-            &mut output_buffer,
-        );
-        print!("{}", output_buffer);
+        eprintln!("Error: '{}' is neither a valid file nor directory.", input_path.display());
+        std::process::exit(1);
     }
 
     if !args.no_copy {
@@ -76,14 +96,93 @@ fn main() {
     }
 }
 
+fn process_file(file_path: &Path, output_buffer: &mut String) {
+    // Format: ./<filename>\n<file content>
+    let relative_path = format!("./{}", file_path.file_name().unwrap().to_string_lossy());
+    
+    match fs::read_to_string(file_path) {
+        Ok(content) => {
+            println!("{}", relative_path);
+            println!("{}", content);
+            
+            output_buffer.push_str(&relative_path);
+            output_buffer.push('\n');
+            output_buffer.push_str(&content);
+            
+            // Ensure content ends with newline
+            if !content.ends_with('\n') {
+                output_buffer.push('\n');
+            }
+            
+            println!("File content copied to clipboard.");
+        },
+        Err(e) => {
+            eprintln!("Error reading file '{}': {}", file_path.display(), e);
+            std::process::exit(1);
+        }
+    }
+}
+
+fn process_directory(root_path: &Path, args: &Args, output_buffer: &mut String) {
+    let comment_dir_name = get_dir_name(&args.path);
+    let mut file_contents = Vec::new();
+
+    if args.output.as_deref() == Some("json") {
+        let json_tree = build_json_tree(
+            root_path,
+            0,
+            args.max_depth,
+            args.dirs_only,
+            args.include_locks,
+        );
+        let json = serde_json::to_string_pretty(&json_tree).unwrap();
+        println!("{}", json);
+        *output_buffer = json;
+    } else {
+        let heading = format!("# tree structure of directory `{}`", comment_dir_name);
+        let root_line = format!("📁 {}", root_path.display());
+
+        println!("{}", heading);
+        println!("{}", root_line);
+
+        output_buffer.push_str(&heading);
+        output_buffer.push('\n');
+        output_buffer.push_str(&root_line);
+        output_buffer.push('\n');
+
+        collect_tree_output(
+            root_path,
+            "".to_string(),
+            0,
+            args.max_depth,
+            args.dirs_only,
+            args.include_locks,
+            output_buffer,
+            &mut file_contents,
+        );
+
+        if !file_contents.is_empty() {
+            output_buffer.push_str("\n# File Contents\n");
+            for (path, content) in file_contents {
+                output_buffer.push_str(&format!("\n# {}\n", path.display()));
+                output_buffer.push_str(&content);
+                if !content.ends_with('\n') {
+                    output_buffer.push('\n');
+                }
+            }
+        }
+    }
+}
+
 fn collect_tree_output(
     path: &Path,
     prefix: String,
-    is_last: bool,
     depth: usize,
     max_depth: Option<usize>,
     dirs_only: bool,
+    include_locks: bool,
     output: &mut String,
+    file_contents: &mut Vec<(PathBuf, String)>,
 ) {
     if let Some(max) = max_depth {
         if depth >= max {
@@ -99,51 +198,63 @@ fn collect_tree_output(
 
     let mut entries: Vec<_> = walker
         .filter_map(Result::ok)
-        .filter(|entry| {
-            let p = entry.path();
-            if p == path {
-                return false;
-            }
-            if dirs_only && !p.is_dir() {
-                return false;
-            }
-            true
-        })
+        .filter(|entry| filter_entry(entry, path, dirs_only, include_locks))
         .collect();
 
     entries.sort_by_key(|e| e.path().to_path_buf());
 
     let count = entries.len();
     for (i, entry) in entries.into_iter().enumerate() {
-        let path = entry.path();
+        let entry_path = entry.path();
         let is_last_entry = i == count - 1;
-
-        let connector = if is_last_entry { "└──" } else { "├──" }.bright_black();
-        let name = path.file_name().unwrap().to_string_lossy();
-
-        let display_name = if path.is_dir() {
-            format!("📁 {}", name).blue().bold()
+        let connector = if is_last_entry {
+            "└──"
         } else {
-            format!("📄 {}", name).green()
+            "├──"
         };
+        let icon = if entry_path.is_dir() { "📁" } else { "📄" };
+        let name = entry_path.file_name().unwrap().to_string_lossy();
 
-        let line = format!("{}{} {}\n", prefix, connector, display_name);
-        output.push_str(&line);
+        // Plain text for clipboard
+        let plain_line = format!("{}{} {} {}", prefix, connector, icon, name);
+        output.push_str(&plain_line);
+        output.push('\n');
 
-        if path.is_dir() {
+        // Colored output for terminal
+        let colored_connector = connector.bright_black();
+        let colored_name = if entry_path.is_dir() {
+            format!("{} {}", icon, name).blue().bold()
+        } else {
+            format!("{} {}", icon, name).green()
+        };
+        let colored_prefix = if depth > 0 && !prefix.is_empty() {
+            prefix.bright_black()
+        } else {
+            prefix.normal()
+        };
+        println!("{}{} {}", colored_prefix, colored_connector, colored_name);
+
+        if entry_path.is_file() {
+            if let Ok(content) = fs::read_to_string(entry_path) {
+                file_contents.push((entry_path.to_path_buf(), content));
+            }
+        }
+
+        if entry_path.is_dir() {
             let new_prefix = if is_last_entry {
                 format!("{}    ", prefix)
             } else {
-                format!("{}{}", prefix, "│   ".bright_black())
+                format!("{}│   ", prefix)
             };
             collect_tree_output(
-                &path,
+                entry_path,
                 new_prefix,
-                is_last_entry,
                 depth + 1,
                 max_depth,
                 dirs_only,
+                include_locks,
                 output,
+                file_contents,
             );
         }
     }
@@ -154,46 +265,33 @@ fn build_json_tree(
     depth: usize,
     max_depth: Option<usize>,
     dirs_only: bool,
+    include_locks: bool,
 ) -> TreeNode {
     let name = path
         .file_name()
         .unwrap_or_else(|| path.as_os_str())
         .to_string_lossy()
         .into_owned();
-
     let is_dir = path.is_dir();
 
-    let children = if is_dir {
-        if max_depth.map_or(true, |max| depth < max) {
-            let walker = WalkBuilder::new(path)
-                .max_depth(Some(1))
-                .hidden(false)
-                .standard_filters(true)
-                .build();
+    let children = if is_dir && max_depth.map_or(true, |max| depth < max) {
+        let walker = WalkBuilder::new(path)
+            .max_depth(Some(1))
+            .hidden(false)
+            .standard_filters(true)
+            .build();
 
-            let entries = walker
-                .filter_map(Result::ok)
-                .filter(|e| {
-                    let p = e.path();
-                    if p == path {
-                        return false;
-                    }
-                    if dirs_only && !p.is_dir() {
-                        return false;
-                    }
-                    true
-                })
-                .collect::<Vec<_>>();
+        let entries = walker
+            .filter_map(Result::ok)
+            .filter(|e| filter_entry(e, path, dirs_only, include_locks))
+            .collect::<Vec<_>>();
 
-            Some(
-                entries
-                    .into_iter()
-                    .map(|e| build_json_tree(e.path(), depth + 1, max_depth, dirs_only))
-                    .collect(),
-            )
-        } else {
-            Some(vec![])
-        }
+        Some(
+            entries
+                .into_iter()
+                .map(|e| build_json_tree(e.path(), depth + 1, max_depth, dirs_only, include_locks))
+                .collect(),
+        )
     } else {
         None
     };
@@ -203,6 +301,34 @@ fn build_json_tree(
         path: path.to_string_lossy().into_owned(),
         is_dir,
         children,
+    }
+}
+
+fn filter_entry(entry: &DirEntry, parent: &Path, dirs_only: bool, include_locks: bool) -> bool {
+    let path = entry.path();
+    if path == parent {
+        return false;
+    }
+    if dirs_only && !path.is_dir() {
+        return false;
+    }
+    if !include_locks && path.file_name().map_or(false, |n| n == "Cargo.lock") {
+        return false;
+    }
+    true
+}
+
+fn get_dir_name(directory: &str) -> String {
+    if directory == "." {
+        std::env::current_dir()
+            .ok()
+            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
+            .unwrap_or_else(|| ".".to_string())
+    } else {
+        PathBuf::from(directory)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| directory.to_string())
     }
 }
 
