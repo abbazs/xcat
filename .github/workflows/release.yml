@@ -141,20 +141,41 @@ jobs:
       run: |
         mkdir -p dist
         
+        # Debug: Show what's in the release directory
+        echo "Contents of target/${{ matrix.target }}/release/:"
+        ls -la target/${{ matrix.target }}/release/
+        
         # Copy the binary with the target-specific name
         if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-          cp target/${{ matrix.target }}/release/${{ matrix.artifact_name }} dist/${{ matrix.asset_name }}
-          # Also create a zip archive
+          # For Windows, look for the .exe file
+          if [[ -f "target/${{ matrix.target }}/release/xcat.exe" ]]; then
+            cp "target/${{ matrix.target }}/release/xcat.exe" "dist/${{ matrix.asset_name }}"
+            echo "Copied xcat.exe to dist/${{ matrix.asset_name }}"
+          else
+            echo "Error: xcat.exe not found"
+            exit 1
+          fi
+          # Create zip archive
           cd dist
-          7z a ${{ matrix.asset_name }}.zip ${{ matrix.artifact_name }}
+          7z a "${{ matrix.asset_name }}.zip" "${{ matrix.asset_name }}"
           cd ..
         else
-          cp target/${{ matrix.target }}/release/${{ matrix.artifact_name }} dist/${{ matrix.asset_name }}
-          # Also create a tar.gz archive
+          # For Unix, look for the binary without extension
+          if [[ -f "target/${{ matrix.target }}/release/xcat" ]]; then
+            cp "target/${{ matrix.target }}/release/xcat" "dist/${{ matrix.asset_name }}"
+            echo "Copied xcat to dist/${{ matrix.asset_name }}"
+          else
+            echo "Error: xcat binary not found"
+            exit 1
+          fi
+          # Create tar.gz archive
           cd dist
-          tar czf ${{ matrix.asset_name }}.tar.gz ${{ matrix.artifact_name }}
+          tar czf "${{ matrix.asset_name }}.tar.gz" "${{ matrix.asset_name }}"
           cd ..
         fi
+        
+        echo "Final dist contents:"
+        ls -la dist/
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
