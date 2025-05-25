@@ -3,6 +3,10 @@ name = "xcat"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "xcat"  # This determines the binary name
+path = "src/main.rs"
+
 [dependencies]
 clap = { version = "4.0", features = ["derive"] }
 colored = "2.0"
