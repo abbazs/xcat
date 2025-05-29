@@ -1,5 +1,5 @@
 [package]
-name = "sdir"
+name = "xcat"
 version = "0.1.0"
 edition = "2024"
 description = "A Rust tool that recursively traverses directories, maps file structures, and consolidates all file contents into a single output file for enhanced analysis with AI systems like Grok."
