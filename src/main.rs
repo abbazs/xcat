@@ -16,6 +16,7 @@
  *    - Enhanced version of Unix 'tree' with modern terminal styling
  *    - Supports both visual tree output and JSON representation
  *    - Can include file contents alongside the directory structure
+ *    - Shows empty directories in gray color
  * 
  * 3. Clipboard Integration (xclip-like):
  *    - Automatically copies all output to system clipboard
@@ -25,6 +26,7 @@
  * Key Features:
  *    - Smart path detection (auto-detects files vs directories)
  *    - Colorized terminal output with emoji icons
+ *    - Empty directories shown in gray
  *    - Configurable traversal depth and filtering options
  *    - Lock file exclusion (Cargo.lock, etc.) with override option
  *    - JSON export capability for programmatic use
@@ -80,6 +82,7 @@ struct TreeNode {
     name: String,
     path: String,
     is_dir: bool,
+    is_empty: bool,
     children: Option<Vec<TreeNode>>,
 }
 
@@ -188,6 +191,42 @@ fn process_directory(root_path: &Path, args: &Args, output_buffer: &mut String) 
     }
 }
 
+fn is_directory_empty(path: &Path, dirs_only: bool, include_locks: bool) -> bool {
+    let walker = WalkBuilder::new(path)
+        .max_depth(Some(1))
+        .hidden(false)
+        .standard_filters(true)
+        .build();
+
+    let entries: Vec<_> = walker
+        .filter_map(Result::ok)
+        .filter(|entry| filter_entry(entry, path, dirs_only, include_locks))
+        .collect();
+
+    // If no entries at all, it's empty
+    if entries.is_empty() {
+        return true;
+    }
+
+    // If we have entries, check if they are all empty directories
+    for entry in entries {
+        let entry_path = entry.path();
+        if entry_path.is_file() {
+            // Has at least one file, so not empty
+            return false;
+        } else if entry_path.is_dir() {
+            // Recursively check if this subdirectory is empty
+            if !is_directory_empty(entry_path, dirs_only, include_locks) {
+                // Has at least one non-empty subdirectory, so not empty
+                return false;
+            }
+        }
+    }
+
+    // All entries are empty directories, so this directory is effectively empty
+    true
+}
+
 fn collect_tree_output(
     path: &Path,
     prefix: String,
@@ -229,15 +268,26 @@ fn collect_tree_output(
         let icon = if entry_path.is_dir() { "📁" } else { "📄" };
         let name = entry_path.file_name().unwrap().to_string_lossy();
 
-        // Plain text for clipboard
-        let plain_line = format!("{}{} {} {}", prefix, connector, icon, name);
+        // Check if directory is empty
+        let is_empty_dir = entry_path.is_dir() && is_directory_empty(entry_path, dirs_only, include_locks);
+
+        // Plain text for clipboard (include empty indicator)
+        let plain_line = if is_empty_dir {
+            format!("{}{} {} {} (empty)", prefix, connector, icon, name)
+        } else {
+            format!("{}{} {} {}", prefix, connector, icon, name)
+        };
         output.push_str(&plain_line);
         output.push('\n');
 
         // Colored output for terminal
         let colored_connector = connector.bright_black();
         let colored_name = if entry_path.is_dir() {
-            format!("{} {}", icon, name).blue().bold()
+            if is_empty_dir {
+                format!("{} {} (empty)", icon, name).bright_black()
+            } else {
+                format!("{} {}", icon, name).blue().bold()
+            }
         } else {
             format!("{} {}", icon, name).green()
         };
@@ -287,6 +337,7 @@ fn build_json_tree(
         .to_string_lossy()
         .into_owned();
     let is_dir = path.is_dir();
+    let is_empty = is_dir && is_directory_empty(path, dirs_only, include_locks);
 
     let children = if is_dir && max_depth.map_or(true, |max| depth < max) {
         let walker = WalkBuilder::new(path)
@@ -314,6 +365,7 @@ fn build_json_tree(
         name,
         path: path.to_string_lossy().into_owned(),
         is_dir,
+        is_empty,
         children,
     }
 }
