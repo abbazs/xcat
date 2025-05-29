@@ -600,18 +600,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
-name = "sdir"
-version = "0.1.0"
-dependencies = [
- "arboard",
- "clap",
- "colored",
- "ignore",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "serde"
 version = "1.0.219"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -866,3 +854,15 @@ name = "x11rb-protocol"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec107c4503ea0b4a98ef47356329af139c0a4f7750e621cf2973cd3385ebcb3d"
+
+[[package]]
+name = "xcat"
+version = "0.1.0"
+dependencies = [
+ "arboard",
+ "clap",
+ "colored",
+ "ignore",
+ "serde",
+ "serde_json",
+]

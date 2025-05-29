@@ -1,28 +1,44 @@
 /*
- * sdir - A CLI tool for visualizing file/directory structures
+ * xcat - Extended cat with tree visualization and clipboard integration
  * 
- * This tool provides two main functionalities:
+ * A hybrid CLI tool that intelligently handles both files and directories,
+ * combining the functionality of cat, tree, and xclip into a single utility.
  * 
- * 1. File Mode:
- *    - When provided with a file path, it reads the file's content
- *    - Outputs the file path as ./<filename>
- *    - Displays and copies the file content to the clipboard
+ * Modes of Operation:
  * 
- * 2. Directory Mode:
- *    - When provided with a directory path, it creates a tree visualization
- *    - Similar to the Unix 'tree' command but with additional features
- *    - Supports colored output in the terminal
- *    - Can generate JSON representation of the directory structure
- *    - Copies the tree structure to clipboard automatically
- *    - Includes file contents in the output if desired
+ * 1. File Mode (cat-like):
+ *    - Reads and displays file contents with relative path formatting
+ *    - Output format: ./<filename> followed by file content
+ *    - Automatically copies content to clipboard for easy sharing
  * 
- * Features:
- *    - Directory traversal with customizable depth
- *    - Directory-only filtering option
- *    - Lock file filtering (can be disabled)
- *    - JSON output option
- *    - Automatic clipboard copying
- *    - Colorized terminal output
+ * 2. Directory Mode (tree-like):
+ *    - Creates hierarchical visualizations of directory structures
+ *    - Enhanced version of Unix 'tree' with modern terminal styling
+ *    - Supports both visual tree output and JSON representation
+ *    - Can include file contents alongside the directory structure
+ *    - Shows empty directories in gray color
+ * 
+ * 3. Clipboard Integration (xclip-like):
+ *    - Automatically copies all output to system clipboard
+ *    - Eliminates need for manual piping to clipboard utilities
+ *    - Can be disabled with --no-copy flag when not needed
+ * 
+ * Key Features:
+ *    - Smart path detection (auto-detects files vs directories)
+ *    - Colorized terminal output with emoji icons
+ *    - Empty directories shown in gray
+ *    - Configurable traversal depth and filtering options
+ *    - Lock file exclusion (Cargo.lock, etc.) with override option
+ *    - JSON export capability for programmatic use
+ *    - File content embedding in directory trees
+ *    - Respects .gitignore and standard filters via ignore crate
+ * 
+ * Usage Examples:
+ *    xcat                        # Current directory tree
+ *    xcat src/main.rs            # Display and copy file content
+ *    xcat --dirs-only            # Show only directories
+ *    xcat --output json          # Export as JSON
+ *    xcat --max-depth 2          # Limit depth
  */
 
 use clap::Parser;
@@ -32,7 +48,7 @@ use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// CLI Tree visualizer like the Unix `tree` command
+/// CLI tool for visualizing file/directory structures
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
 struct Args {
@@ -66,6 +82,7 @@ struct TreeNode {
     name: String,
     path: String,
     is_dir: bool,
+    is_empty: bool,
     children: Option<Vec<TreeNode>>,
 }
 
@@ -174,6 +191,42 @@ fn process_directory(root_path: &Path, args: &Args, output_buffer: &mut String) 
     }
 }
 
+fn is_directory_empty(path: &Path, dirs_only: bool, include_locks: bool) -> bool {
+    let walker = WalkBuilder::new(path)
+        .max_depth(Some(1))
+        .hidden(false)
+        .standard_filters(true)
+        .build();
+
+    let entries: Vec<_> = walker
+        .filter_map(Result::ok)
+        .filter(|entry| filter_entry(entry, path, dirs_only, include_locks))
+        .collect();
+
+    // If no entries at all, it's empty
+    if entries.is_empty() {
+        return true;
+    }
+
+    // If we have entries, check if they are all empty directories
+    for entry in entries {
+        let entry_path = entry.path();
+        if entry_path.is_file() {
+            // Has at least one file, so not empty
+            return false;
+        } else if entry_path.is_dir() {
+            // Recursively check if this subdirectory is empty
+            if !is_directory_empty(entry_path, dirs_only, include_locks) {
+                // Has at least one non-empty subdirectory, so not empty
+                return false;
+            }
+        }
+    }
+
+    // All entries are empty directories, so this directory is effectively empty
+    true
+}
+
 fn collect_tree_output(
     path: &Path,
     prefix: String,
@@ -215,15 +268,26 @@ fn collect_tree_output(
         let icon = if entry_path.is_dir() { "📁" } else { "📄" };
         let name = entry_path.file_name().unwrap().to_string_lossy();
 
-        // Plain text for clipboard
-        let plain_line = format!("{}{} {} {}", prefix, connector, icon, name);
+        // Check if directory is empty
+        let is_empty_dir = entry_path.is_dir() && is_directory_empty(entry_path, dirs_only, include_locks);
+
+        // Plain text for clipboard (include empty indicator)
+        let plain_line = if is_empty_dir {
+            format!("{}{} {} {} (empty)", prefix, connector, icon, name)
+        } else {
+            format!("{}{} {} {}", prefix, connector, icon, name)
+        };
         output.push_str(&plain_line);
         output.push('\n');
 
         // Colored output for terminal
         let colored_connector = connector.bright_black();
         let colored_name = if entry_path.is_dir() {
-            format!("{} {}", icon, name).blue().bold()
+            if is_empty_dir {
+                format!("{} {} (empty)", icon, name).bright_black()
+            } else {
+                format!("{} {}", icon, name).blue().bold()
+            }
         } else {
             format!("{} {}", icon, name).green()
         };
@@ -273,6 +337,7 @@ fn build_json_tree(
         .to_string_lossy()
         .into_owned();
     let is_dir = path.is_dir();
+    let is_empty = is_dir && is_directory_empty(path, dirs_only, include_locks);
 
     let children = if is_dir && max_depth.map_or(true, |max| depth < max) {
         let walker = WalkBuilder::new(path)
@@ -300,6 +365,7 @@ fn build_json_tree(
         name,
         path: path.to_string_lossy().into_owned(),
         is_dir,
+        is_empty,
         children,
     }
 }
