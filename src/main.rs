@@ -52,9 +52,9 @@ use std::path::{Path, PathBuf};
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
 struct Args {
-    /// Root directory or file path
+    /// Root directory or file path(s)
     #[arg(default_value = ".")]
-    path: String,
+    paths: Vec<String>,
 
     /// Show only directories
     #[arg(long)]
@@ -88,26 +88,27 @@ struct TreeNode {
 
 fn main() {
     let args = Args::parse();
-    let input_path = Path::new(&args.path);
-
-    if !input_path.exists() {
-        eprintln!("Error: '{}' does not exist.", input_path.display());
-        std::process::exit(1);
-    }
+    let input_paths: Vec<_> = if args.paths.is_empty() {
+        vec![".".to_string()]
+    } else {
+        args.paths.clone()
+    };
 
     let mut output_buffer = String::new();
-
-    if input_path.is_file() {
-        // Handle file input
-        process_file(input_path, &mut output_buffer);
-    } else if input_path.is_dir() {
-        // Handle directory input (original functionality)
-        process_directory(input_path, &args, &mut output_buffer);
-    } else {
-        eprintln!("Error: '{}' is neither a valid file nor directory.", input_path.display());
-        std::process::exit(1);
+    for input_path_str in input_paths {
+        let input_path = Path::new(&input_path_str);
+        if !input_path.exists() {
+            eprintln!("Error: '{}' does not exist.", input_path.display());
+            continue;
+        }
+        if input_path.is_file() {
+            process_file(input_path, &mut output_buffer);
+        } else if input_path.is_dir() {
+            process_directory(input_path, &args, &mut output_buffer);
+        } else {
+            eprintln!("Error: '{}' is neither a valid file nor directory.", input_path.display());
+        }
     }
-
     if !args.no_copy {
         copy_to_clipboard(&output_buffer);
     }
