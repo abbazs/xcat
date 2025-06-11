@@ -39,16 +39,7 @@ jobs:
             artifact_name: xcat
             asset_name: xcat-linux-armv7
           
-          # Windows targets
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            artifact_name: xcat.exe
-            asset_name: xcat-windows-x86_64.exe
-          - os: windows-latest
-            target: i686-pc-windows-msvc
-            artifact_name: xcat.exe
-            asset_name: xcat-windows-i686.exe
-          # Windows targets
+          # Windows targets (duplicates removed)
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact_name: xcat.exe
@@ -325,7 +316,7 @@ jobs:
     - name: Download artifact
       uses: actions/download-artifact@v4
       with:
-        name: ${{ matrix.artifact_name }}
+        name: ${{ matrix.target }}-${{ matrix.artifact_name }}
         path: test-binary
 
     - name: Test binary (Unix)
