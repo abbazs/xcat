@@ -95,8 +95,16 @@ fn main() {
     };
 
     let mut output_buffer = String::new();
-    for input_path_str in input_paths {
-        let input_path = Path::new(&input_path_str);
+    let multiple_inputs = input_paths.len() > 1;
+    
+    for (index, input_path_str) in input_paths.iter().enumerate() {
+        // Add separator for multiple inputs (except for the first one)
+        if multiple_inputs && index > 0 {
+            println!("---");
+            output_buffer.push_str("---\n");
+        }
+        
+        let input_path = Path::new(input_path_str);
         if !input_path.exists() {
             eprintln!("Error: '{}' does not exist.", input_path.display());
             continue;
@@ -142,7 +150,7 @@ fn process_file(file_path: &Path, output_buffer: &mut String) {
 }
 
 fn process_directory(root_path: &Path, args: &Args, output_buffer: &mut String) {
-    let comment_dir_name = get_dir_name(&args.path);
+    let comment_dir_name = get_dir_name(root_path);
     let mut file_contents = Vec::new();
 
     if args.output.as_deref() == Some("json") {
@@ -385,17 +393,16 @@ fn filter_entry(entry: &DirEntry, parent: &Path, dirs_only: bool, include_locks:
     true
 }
 
-fn get_dir_name(directory: &str) -> String {
-    if directory == "." {
+fn get_dir_name(path: &Path) -> String {
+    if path == Path::new(".") {
         std::env::current_dir()
             .ok()
             .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
             .unwrap_or_else(|| ".".to_string())
     } else {
-        PathBuf::from(directory)
-            .file_name()
+        path.file_name()
             .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| directory.to_string())
+            .unwrap_or_else(|| path.to_string_lossy().to_string())
     }
 }
 
