@@ -216,35 +216,37 @@ jobs:
         
         echo "tag=$TAG" >> $GITHUB_OUTPUT
         
-        # Generate changelog since last tag
-        PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -v "^$TAG$" | head -n1)
-        
-        if [[ -n "$PREVIOUS_TAG" ]]; then
-          echo "## Changes since $PREVIOUS_TAG" > release_notes.md
+        # For workflow_dispatch, the tag doesn't exist yet, so we'll create release notes differently
+        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          echo "## Release $TAG" > release_notes.md
           echo "" >> release_notes.md
-          # Check if both tags exist before trying to generate log
-          if git rev-parse "$PREVIOUS_TAG" >/dev/null 2>&1 && git rev-parse "$TAG" >/dev/null 2>&1; then
-            git log --pretty=format:"- %s (%h)" $PREVIOUS_TAG..$TAG >> release_notes.md
-          elif git rev-parse "$TAG" >/dev/null 2>&1; then
-            # If current tag exists, show commits from that tag
-            git log --pretty=format:"- %s (%h)" $TAG^..$TAG >> release_notes.md
+          echo "This release was created manually via workflow dispatch." >> release_notes.md
+          echo "" >> release_notes.md
+          
+          # Try to find the latest existing tag for comparison
+          LATEST_TAG=$(git tag --sort=-version:refname | head -n1 2>/dev/null || echo "")
+          
+          if [[ -n "$LATEST_TAG" ]]; then
+            echo "## Changes since $LATEST_TAG" >> release_notes.md
+            echo "" >> release_notes.md
+            git log --pretty=format:"- %s (%h)" $LATEST_TAG..HEAD >> release_notes.md
           else
-            # If neither tag exists, show recent commits
-            echo "- Recent changes (tag not yet created)" >> release_notes.md
+            echo "## Recent Changes" >> release_notes.md
+            echo "" >> release_notes.md
             git log --pretty=format:"- %s (%h)" -10 >> release_notes.md
           fi
         else
-          echo "## Initial Release" > release_notes.md
-          echo "" >> release_notes.md
-          if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Changes in this release:" >> release_notes.md
+          # For tag pushes, the tag exists
+          PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -v "^$TAG$" | head -n1 2>/dev/null || echo "")
+          
+          if [[ -n "$PREVIOUS_TAG" ]]; then
+            echo "## Changes since $PREVIOUS_TAG" > release_notes.md
             echo "" >> release_notes.md
-            git log --pretty=format:"- %s (%h)" $TAG^..$TAG >> release_notes.md
+            git log --pretty=format:"- %s (%h)" $PREVIOUS_TAG..$TAG >> release_notes.md
           else
-            echo "First release of xcat - Extended cat with tree visualization and clipboard integration." >> release_notes.md
+            echo "## Initial Release" > release_notes.md
             echo "" >> release_notes.md
-            echo "Recent commits:" >> release_notes.md
-            git log --pretty=format:"- %s (%h)" -10 >> release_notes.md
+            echo "First release of xcat - Extended cat with tree visualization and clipboard integration." >> release_notes.md
           fi
         fi
         
