@@ -100,8 +100,10 @@ fn main() {
     for (index, input_path_str) in input_paths.iter().enumerate() {
         // Add separator for multiple inputs (except for the first one)
         if multiple_inputs && index > 0 {
-            println!("---");
-            output_buffer.push_str("---\n");
+            let separator = "#".repeat(80);
+            println!("{}", separator);
+            output_buffer.push_str(&separator);
+            output_buffer.push('\n');
         }
         
         let input_path = Path::new(input_path_str);
