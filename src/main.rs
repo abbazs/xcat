@@ -75,6 +75,10 @@ struct Args {
     /// Include lock files (default: ignored)
     #[arg(long, default_value_t = false)]
     include_locks: bool,
+
+    /// Save Output as file
+    #[arg(long)]
+    save: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -122,6 +126,11 @@ fn main() {
     if !args.no_copy {
         copy_to_clipboard(&output_buffer);
     }
+
+    if let Some(file_path) = &args.save {
+        write_to_file(&output_buffer, file_path);
+        println!("Output saved to '{}'", file_path);
+    } 
 }
 
 fn process_file(file_path: &Path, output_buffer: &mut String) {
@@ -412,5 +421,14 @@ fn copy_to_clipboard(text: &str) {
     use arboard::Clipboard;
     if let Ok(mut clipboard) = Clipboard::new() {
         let _ = clipboard.set_text(text.to_owned());
+    }
+}
+
+fn write_to_file(text: &str, file_path: &str) {
+    use std::fs::File;
+    use std::io::Write;
+    
+    if let Ok(mut file) = File::create(file_path) {
+        let _ = file.write_all(text.as_bytes());
     }
 }
