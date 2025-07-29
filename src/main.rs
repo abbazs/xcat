@@ -1,28 +1,28 @@
 /*
  * xcat - Extended cat with tree visualization and clipboard integration
- * 
+ *
  * A hybrid CLI tool that intelligently handles both files and directories,
  * combining the functionality of cat, tree, and xclip into a single utility.
- * 
+ *
  * Modes of Operation:
- * 
+ *
  * 1. File Mode (cat-like):
  *    - Reads and displays file contents with relative path formatting
  *    - Output format: ./<filename> followed by file content
  *    - Automatically copies content to clipboard for easy sharing
- * 
+ *
  * 2. Directory Mode (tree-like):
  *    - Creates hierarchical visualizations of directory structures
  *    - Enhanced version of Unix 'tree' with modern terminal styling
  *    - Supports both visual tree output and JSON representation
  *    - Can include file contents alongside the directory structure
  *    - Shows empty directories in gray color
- * 
+ *
  * 3. Clipboard Integration (xclip-like):
  *    - Automatically copies all output to system clipboard
  *    - Eliminates need for manual piping to clipboard utilities
  *    - Can be disabled with --no-copy flag when not needed
- * 
+ *
  * Key Features:
  *    - Smart path detection (auto-detects files vs directories)
  *    - Colorized terminal output with emoji icons
@@ -32,7 +32,7 @@
  *    - JSON export capability for programmatic use
  *    - File content embedding in directory trees
  *    - Respects .gitignore and standard filters via ignore crate
- * 
+ *
  * Usage Examples:
  *    xcat                        # Current directory tree
  *    xcat src/main.rs            # Display and copy file content
@@ -43,6 +43,7 @@
 
 use clap::Parser;
 use colored::*;
+use glob::Pattern;
 use ignore::{DirEntry, WalkBuilder};
 use serde::Serialize;
 use std::fs;
@@ -75,6 +76,10 @@ struct Args {
     /// Include lock files (default: ignored)
     #[arg(long, default_value_t = false)]
     include_locks: bool,
+
+    /// Only process files whose name contains this pattern
+    #[arg(long, value_name = "PATTERN")]
+    include_files: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -90,6 +95,38 @@ fn main() {
     let args = Args::parse();
     let input_path = Path::new(&args.path);
 
+    // If --include-files is set on a directory, skip tree mode and
+    // only process matching files under that directory.
+    if let Some(pattern) = &args.include_files {
+        if input_path.is_dir() {
+            // ← here: compile the glob pattern once
+            let g = Pattern::new(pattern).unwrap();
+
+            let mut output_buffer = String::new();
+            WalkBuilder::new(input_path)
+                .hidden(false)
+                .standard_filters(true)
+                .build()
+                .filter_map(Result::ok)
+                .filter(|e| {
+                    // only files whose name matches the glob
+                    if let Some(name) = e.path().file_name().and_then(|n| n.to_str()) {
+                        e.path().is_file() && g.matches(name)
+                    } else {
+                        false
+                    }
+                })
+                .for_each(|entry| {
+                    process_file(entry.path(), &mut output_buffer);
+                });
+
+            if !args.no_copy {
+                copy_to_clipboard(&output_buffer);
+            }
+            std::process::exit(0);
+        }
+    }
+
     if !input_path.exists() {
         eprintln!("Error: '{}' does not exist.", input_path.display());
         std::process::exit(1);
@@ -104,7 +141,10 @@ fn main() {
         // Handle directory input (original functionality)
         process_directory(input_path, &args, &mut output_buffer);
     } else {
-        eprintln!("Error: '{}' is neither a valid file nor directory.", input_path.display());
+        eprintln!(
+            "Error: '{}' is neither a valid file nor directory.",
+            input_path.display()
+        );
         std::process::exit(1);
     }
 
@@ -115,24 +155,24 @@ fn main() {
 
 fn process_file(file_path: &Path, output_buffer: &mut String) {
     // Format: ./<filename>\n<file content>
-    let relative_path = format!("./{}", file_path.file_name().unwrap().to_string_lossy());
-    
+    let cwd = std::env::current_dir().unwrap();
+    let rel = file_path.strip_prefix(&cwd).unwrap_or(file_path);
+    let relative_path = format!("{}", rel.display());
+
     match fs::read_to_string(file_path) {
         Ok(content) => {
             println!("{}", relative_path);
             println!("{}", content);
-            
+
             output_buffer.push_str(&relative_path);
             output_buffer.push('\n');
             output_buffer.push_str(&content);
-            
+
             // Ensure content ends with newline
             if !content.ends_with('\n') {
                 output_buffer.push('\n');
             }
-            
-            println!("File content copied to clipboard.");
-        },
+        }
         Err(e) => {
             eprintln!("Error reading file '{}': {}", file_path.display(), e);
             std::process::exit(1);
@@ -269,7 +309,8 @@ fn collect_tree_output(
         let name = entry_path.file_name().unwrap().to_string_lossy();
 
         // Check if directory is empty
-        let is_empty_dir = entry_path.is_dir() && is_directory_empty(entry_path, dirs_only, include_locks);
+        let is_empty_dir =
+            entry_path.is_dir() && is_directory_empty(entry_path, dirs_only, include_locks);
 
         // Plain text for clipboard (include empty indicator)
         let plain_line = if is_empty_dir {
