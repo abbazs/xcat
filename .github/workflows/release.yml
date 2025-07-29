@@ -365,3 +365,6 @@ jobs:
           # Test standalone binary
           ./${{ matrix.artifact_name }} --help
         }
+
+permissions:
+  contents: write
