@@ -105,7 +105,7 @@ fn main() {
             let mut output_buffer = String::new();
             WalkBuilder::new(input_path)
                 .hidden(false)
-                .standard_filters(true)
+                .standard_filters(false)
                 .build()
                 .filter_map(Result::ok)
                 .filter(|e| {
