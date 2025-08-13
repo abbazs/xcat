@@ -287,8 +287,7 @@ fn collect_tree_output(
             colored_name
         );
 
-        if entry_path.is_file() && args.include_files.is_none() {
-            // Only embed content if not already filtering
+        if entry_path.is_file() {
             if let Ok(content) = fs::read_to_string(entry_path) {
                 file_contents.push((entry_path.to_path_buf(), content));
             }
