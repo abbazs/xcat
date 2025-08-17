@@ -10,6 +10,7 @@ A CLI utility that combines file viewing, directory traversal, and clipboard ope
 - **Flexible Options**: Control depth, filtering, and output format
 - **Clipboard Integration**: Automatically copies output to your clipboard
 - **JSON Export**: Option to export the structure as JSON
+- **Smart Ignoring**: Respects `.gitignore` files and skips common lock files unless `--include-locks` is specified
 
 ## Installation
 
