@@ -10,7 +10,7 @@
 use clap::Parser;
 use colored::*;
 use globset::{Glob, GlobMatcher};
-use ignore::{DirEntry, WalkBuilder};
+use ignore::{DirEntry, Walk, WalkBuilder};
 use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -55,6 +55,29 @@ struct TreeNode {
     is_dir: bool,
     is_empty: bool,
     children: Option<Vec<TreeNode>>,
+}
+
+const LOCK_FILE_NAMES: &[&str] = &[
+    "Cargo.lock",
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+    "uv.lock",
+];
+
+fn build_walker(path: &Path, max_depth: Option<usize>) -> Walk {
+    let mut builder = WalkBuilder::new(path);
+    builder
+        .hidden(false)
+        .ignore(true)
+        .git_ignore(true)
+        .git_global(true)
+        .git_exclude(true)
+        .parents(true);
+    if let Some(depth) = max_depth {
+        builder.max_depth(Some(depth));
+    }
+    builder.build()
 }
 
 fn main() {
@@ -191,11 +214,7 @@ fn process_directory(
 }
 
 fn is_directory_empty(path: &Path, args: &Args, include_matcher: &Option<GlobMatcher>) -> bool {
-    let walker = WalkBuilder::new(path)
-        .max_depth(Some(1))
-        .hidden(false)
-        .standard_filters(true)
-        .build();
+    let walker = build_walker(path, Some(1));
 
     !walker.filter_map(Result::ok).any(|entry| {
         filter_entry(
@@ -223,11 +242,7 @@ fn collect_tree_output(
         }
     }
 
-    let walker = WalkBuilder::new(path)
-        .max_depth(Some(1))
-        .hidden(false)
-        .standard_filters(true)
-        .build();
+    let walker = build_walker(path, Some(1));
 
     let mut entries: Vec<_> = walker
         .filter_map(Result::ok)
@@ -327,14 +342,10 @@ fn build_json_tree(
         .into_owned();
     let is_dir = path.is_dir();
     // This is simplified, a more complex check might be needed depending on desired JSON output for empty/filtered dirs
-    let is_empty = is_dir && WalkBuilder::new(path).max_depth(Some(1)).build().count() <= 1;
+    let is_empty = is_dir && build_walker(path, Some(1)).count() <= 1;
 
     let children = if is_dir && max_depth.map_or(true, |max| depth < max) {
-        let walker = WalkBuilder::new(path)
-            .max_depth(Some(1))
-            .hidden(false)
-            .standard_filters(true)
-            .build();
+        let walker = build_walker(path, Some(1));
         let children_nodes: Vec<_> = walker
             .filter_map(Result::ok)
             .filter(|e| filter_entry(e, path, dirs_only, include_locks, include_matcher))
@@ -378,10 +389,7 @@ fn filter_entry(
     if let Some(matcher) = include_matcher {
         if path.is_dir() {
             // A directory is included if it recursively contains any file that matches the pattern.
-            let walker = WalkBuilder::new(path)
-                .hidden(false)
-                .standard_filters(true)
-                .build();
+            let walker = build_walker(path, None);
             return walker
                 .filter_map(Result::ok)
                 .any(|e| e.path().is_file() && matcher.is_match(e.path()));
@@ -394,8 +402,12 @@ fn filter_entry(
     if dirs_only && !path.is_dir() {
         return false;
     }
-    if !include_locks && path.file_name().map_or(false, |n| n == "Cargo.lock") {
-        return false;
+    if !include_locks {
+        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+            if LOCK_FILE_NAMES.contains(&name) || name.ends_with(".lock") {
+                return false;
+            }
+        }
     }
     true
 }
