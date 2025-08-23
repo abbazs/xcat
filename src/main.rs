@@ -13,7 +13,10 @@ use globset::{Glob, GlobMatcher};
 use ignore::{DirEntry, Walk, WalkBuilder};
 use serde::Serialize;
 use std::fs;
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
+
+use atty::Stream;
 
 /// A hybrid cat/tree/xclip CLI tool that handles multiple files and directories.
 #[derive(Parser, Debug)]
@@ -93,14 +96,53 @@ fn main() {
             .compile_matcher()
     });
 
+    // Detect piped stdin. If stdin is not a TTY, we read it once and store.
+    let stdin_is_tty = atty::is(Stream::Stdin);
+    let mut stdin_content: Option<String> = None;
+    if !stdin_is_tty {
+        let mut buf = String::new();
+        if let Ok(_) = io::stdin().read_to_string(&mut buf) {
+            if !buf.is_empty() {
+                stdin_content = Some(buf);
+            }
+        }
+    }
+
     let mut output_buffer = String::new();
     let multiple_inputs = args.paths.len() > 1;
+
+    // Ensure we only consume stdin once.
+    let mut stdin_consumed = false;
 
     for (index, path_str) in args.paths.iter().enumerate() {
         if multiple_inputs && index > 0 {
             let separator = format!("\n{}\n", "#".repeat(80));
             println!("{}", separator.bright_black());
             output_buffer.push_str(&separator);
+        }
+
+        // Support "-" as explicit stdin placeholder.
+        if path_str == "-" {
+            if let Some(ref content) = stdin_content {
+                if !stdin_consumed {
+                    process_stdin(content, Some("-"), &mut output_buffer);
+                    stdin_consumed = true;
+                }
+            } else {
+                eprintln!("Warning: '-' specified but no data was provided on stdin.");
+            }
+            continue;
+        }
+
+        // If user runs `somecmd | xcat` with default path ".", treat piped stdin as the primary input.
+        if path_str == "." && args.paths.len() == 1 && stdin_content.is_some() {
+            if let Some(ref content) = stdin_content {
+                if !stdin_consumed {
+                    process_stdin(content, Some("stdin"), &mut output_buffer);
+                    stdin_consumed = true;
+                }
+            }
+            continue;
         }
 
         let input_path = Path::new(path_str);
@@ -121,8 +163,18 @@ fn main() {
         }
     }
 
+    // If there were no relevant args but piped stdin wasn't consumed above, include it now.
+    if stdin_content.is_some() && !stdin_consumed && (args.paths.len() == 0 || (args.paths.len() == 1 && args.paths[0] == ".")) {
+        if let Some(ref content) = stdin_content {
+            process_stdin(content, Some("stdin"), &mut output_buffer);
+        }
+    }
+
+    // Final clipboard copy (unless disabled). Keep previous behavior: copy entire assembled buffer.
     if !args.no_copy {
-        copy_to_clipboard(&output_buffer);
+        if !output_buffer.is_empty() {
+            copy_to_clipboard(&output_buffer);
+        }
     }
 }
 
@@ -148,6 +200,20 @@ fn process_file(file_path: &Path, output_buffer: &mut String) {
         Err(e) => {
             eprintln!("Error reading file '{}': {}", file_path.display(), e);
         }
+    }
+}
+
+fn process_stdin(content: &str, label: Option<&str>, output_buffer: &mut String) {
+    if let Some(l) = label {
+        let header = l.to_string();
+        println!("{}", header.green());
+        output_buffer.push_str(&header);
+        output_buffer.push('\n');
+    }
+    println!("{}", content);
+    output_buffer.push_str(content);
+    if !content.ends_with('\n') {
+        output_buffer.push('\n');
     }
 }
 
