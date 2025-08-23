@@ -1,4 +1,4 @@
-# sdir
+# xcat
 
 A CLI utility that combines file viewing, directory traversal, and clipboard operations. sdir functions as a multi-purpose command integrating the capabilities of tree, cat, and clipboard management tools.
 
