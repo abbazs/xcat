@@ -1,181 +1,415 @@
 # xcat
 
-A CLI utility that combines file viewing, directory traversal, and clipboard operations. sdir functions as a multi-purpose command integrating the capabilities of tree, cat, and clipboard management tools.
+A hybrid CLI that combines `tree` + `cat` + clipboard in one command. Point it at a directory and it prints a visual tree followed by every file's contents. Point it at a file and it cats it. Either way, the output lands on your clipboard ready to paste.
 
-## Features
+## Why xcat
 
-- **File Mode**: View and copy file contents with a single command
-- **Directory Mode**: Generate tree-like visualizations of directory structures
-- **Colorized Output**: Better terminal visualization with colorized output
-- **Flexible Options**: Control depth, filtering, and output format
-- **Clipboard Integration**: Automatically copies output to your clipboard
-- **JSON Export**: Option to export the structure as JSON
-- **Smart Ignoring**: Respects `.gitignore` files and skips common lock files unless `--include-locks` is specified
+The main use case is feeding code into an LLM. Instead of manually catting files or cobbling together tree output with file dumps, one command gives you the full picture. It's also handy for sharing project context with coworkers, auditing a directory at a glance, or capturing a snapshot of your workspace.
+
+The output is plain text (no ANSI escape codes in the clipboard), so it pastes cleanly into chat, docs, or prompts.
 
 ## Installation
 
-### Prerequisites
+### Prebuilt binaries
 
-You need to have Rust and Cargo installed on your system. If you don't have them installed, you can get them from [rustup.rs](https://rustup.rs/).
+Download from [GitHub Releases](https://github.com/abbazs/xcat/releases):
 
 ```bash
-# Install Rust and Cargo
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+# Linux x86_64 (glibc)
+wget https://github.com/abbazs/xcat/releases/latest/download/xcat-linux-x86_64
+chmod +x xcat-linux-x86_64
+sudo mv xcat-linux-x86_64 /usr/local/bin/xcat
 ```
 
-### Building from Source
+Binaries are available for Linux (x86_64 glibc/musl, aarch64, armv7), macOS (Apple Silicon, Intel), and Windows (x86_64, i686).
 
-1. Clone this repository:
+### Cargo install
 
-    ```bash
-    git clone https://github.com/abbazs/sdir.git
-    cd sdir
-    ```
+```bash
+cargo install --git https://github.com/abbazs/xcat.git
+```
 
-2. Build the project:
+### Build from source
 
-    ```bash
-    cargo build --release
-    ```
+```bash
+git clone https://github.com/abbazs/xcat.git
+cd xcat
+cargo build --release
+# binary at ./target/release/xcat
+```
 
-3. The compiled binary will be available at `./target/release/sdir`
+## Quick Start
 
-4. (Optional) Install the binary to your system:
+```bash
+# Dump the current directory: tree + all file contents, copied to clipboard
+xcat
 
-    ```bash
-    cargo install --path .
-    ```
+# Cat a single file
+xcat src/main.rs
+
+# Pipe content directly
+echo "fix this bug" | xcat
+
+# Dump a specific directory with depth limit
+xcat src/ --max-depth 2
+```
 
 ## Usage
 
-### Basic Usage
-
-```bash
-# View directory structure (current directory by default)
-sdir
-
-# View specific directory structure
-sdir /path/to/directory
-
-# View file content
-sdir /path/to/file.txt
 ```
-
-### Command Line Options
-
-```text
-Usage: sdir [OPTIONS] [PATH]
+Usage: xcat [OPTIONS] [PATH]...
 
 Arguments:
-  [PATH]  Root directory or file path [default: .]
+  [PATH]...  One or more file or directory paths [default: .]
 
 Options:
-      --dirs-only       Show only directories
-      --max-depth <N>   Limit recursion depth
-      --output <TYPE>   Output JSON instead of tree view
-      --no-copy         Disable clipboard copy
-      --include-locks   Include lock files (default: ignored)
-  -h, --help            Print help
-  -V, --version         Print version
+      --dirs-only           Show only directories in tree
+      --max-depth <N>       Limit recursion depth
+      --output <TYPE>       Output JSON instead of tree view (pass "json")
+      --no-copy             Disable clipboard copy
+      --include-locks       Include lock files (default: ignored)
+      --include-files <GLOB>  Filter to files matching a glob pattern (e.g., "*.rs")
+  -h, --help                Print help
+  -V, --version             Print version
 ```
 
-### Examples
+## Examples
+
+### Viewing files
+
+Cat a single file. The relative path is printed as a header, then the contents follow.
 
 ```bash
-# Show only directories
-sdir --dirs-only
-
-# Limit depth to 2 levels
-sdir --max-depth 2
-
-# Generate JSON output
-sdir --output json > structure.json
-
-# View file content
-sdir config.json
-
-# Include lock files
-sdir --include-locks
+xcat README.md
 ```
 
-## Output Examples
+```
+./README.md
+# xcat
+A hybrid CLI that combines tree + cat + clipboard...
+```
 
-### Directory Mode
+Cat multiple files at once:
 
-```text
-# tree structure of directory `my_project`
+```bash
+xcat Cargo.toml src/main.rs
+```
+
+```
+./Cargo.toml
+[package]
+name = "xcat"
+version = "0.1.0"
+
+################################################################################
+./src/main.rs
+fn main() {
+    println!("Hello");
+}
+```
+
+### Directory trees
+
+Running `xcat` with no arguments defaults to `.` and shows the tree for your current directory.
+
+```bash
+xcat
+```
+
+```
+# Tree structure for `my_project`
 📁 ./my_project
 ├── 📁 src
 │   ├── 📄 main.rs
 │   └── 📄 utils.rs
+├── 📁 tests
+│   └── 📄 integration_test.rs
+├── 📄 Cargo.toml
+└── 📄 README.md
+
+# File Contents
+
+# ./src/main.rs
+fn main() {
+    println!("Hello");
+}
+
+# ./src/utils.rs
+pub fn helper() -> bool {
+    true
+}
+
+# ./tests/integration_test.rs
+#[test]
+fn it_works() {
+    assert_eq!(2 + 2, 4);
+}
+
+# ./Cargo.toml
+[package]
+name = "my_project"
+version = "0.1.0"
+
+# ./README.md
+# my_project
+A sample project.
+```
+
+Show only directories, no files:
+
+```bash
+xcat --dirs-only
+```
+
+```
+# Tree structure for `my_project`
+📁 ./my_project
+├── 📁 src
+└── 📁 tests
+```
+
+Limit recursion depth:
+
+```bash
+xcat --max-depth 1
+```
+
+```
+# Tree structure for `my_project`
+📁 ./my_project
+├── 📁 src
+├── 📁 tests
 ├── 📄 Cargo.toml
 └── 📄 README.md
 ```
 
-### File Mode
+### Tree + file contents
 
-```json
-./config.json
-{
-  "version": "1.0",
-  "settings": {
-    "debug": false,
-    "theme": "dark"
-  }
+The default behavior. Give it a directory and you get the tree visualization followed by a "File Contents" section with every file's path and content.
+
+```bash
+xcat src/
+```
+
+```
+# Tree structure for `src`
+📁 ./src
+├── 📄 main.rs
+└── 📄 utils.rs
+
+# File Contents
+
+# ./src/main.rs
+fn main() {
+    println!("Hello");
+}
+
+# ./src/utils.rs
+pub fn helper() -> bool {
+    true
 }
 ```
 
-## Clipboard Support
+### Filtering files
 
-The tool automatically copies the output to your clipboard. If you want to disable this functionality, use the `--no-copy` flag.
-
-## Building for Different Platforms
-
-### Windows
+Include only Rust files. The `.rs` pattern is auto-expanded to `*.rs`:
 
 ```bash
-cargo build --release --target x86_64-pc-windows-msvc
+xcat --include-files .rs
 ```
 
-### macOS
+```
+# Tree structure for `my_project`
+📁 ./my_project
+├── 📁 src
+│   ├── 📄 main.rs
+│   └── 📄 utils.rs
+└── 📁 tests
+    └── 📄 integration_test.rs
 
-```bash
-cargo build --release --target x86_64-apple-darwin
+# File Contents
+
+# ./src/main.rs
+fn main() {
+    println!("Hello");
+}
+...
 ```
 
-### Linux
+Use a full glob pattern:
 
 ```bash
-cargo build --release --target x86_64-unknown-linux-gnu
+xcat --include-files "*.toml"
 ```
 
-## Troubleshooting
+Directories are shown only if they recursively contain a matching file. If no files match inside a directory, that directory is excluded from the tree entirely.
 
-### Missing Clipboard Dependencies
+### Lock files
 
-On Linux, you might need additional dependencies for clipboard functionality:
+Lock files are ignored by default. These are skipped unless you opt in:
+
+- `Cargo.lock`
+- `package-lock.json`
+- `yarn.lock`
+- `pnpm-lock.yaml`
+- `uv.lock`
+- Any file ending in `.lock`
+
+Include them with `--include-locks`:
 
 ```bash
-# For Debian/Ubuntu
+xcat --include-locks
+```
+
+### JSON output
+
+Export the directory structure as structured JSON:
+
+```bash
+xcat --output json
+```
+
+```json
+{
+  "name": "my_project",
+  "path": "./my_project",
+  "is_dir": true,
+  "is_empty": false,
+  "children": [
+    {
+      "name": "src",
+      "path": "./src",
+      "is_dir": true,
+      "is_empty": false,
+      "children": [
+        {
+          "name": "main.rs",
+          "path": "./src/main.rs",
+          "is_dir": false,
+          "is_empty": false,
+          "children": null
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Piped stdin
+
+Pipe content directly into xcat. The piped text is printed and copied to clipboard.
+
+```bash
+echo "hello world" | xcat
+```
+
+```
+stdin
+hello world
+```
+
+Use `-` as an explicit stdin placeholder, useful when combining with file paths:
+
+```bash
+echo "preamble text" | xcat - README.md
+```
+
+### Multiple paths
+
+Combine files and directories in a single invocation. Each input is separated by a divider:
+
+```bash
+xcat src/ README.md tests/
+```
+
+```
+# Tree structure for `src`
+📁 ./src
+├── 📄 main.rs
+└── 📄 utils.rs
+
+# File Contents
+
+# ./src/main.rs
+fn main() {
+    println!("Hello");
+}
+
+# ./src/utils.rs
+pub fn helper() -> bool {
+    true
+}
+################################################################################
+./README.md
+# xcat
+A hybrid CLI...
+################################################################################
+# Tree structure for `tests`
+📁 ./tests
+└── 📄 integration_test.rs
+
+# File Contents
+
+# ./tests/integration_test.rs
+#[test]
+fn it_works() {
+    assert_eq!(2 + 2, 4);
+}
+```
+
+### Clipboard
+
+Output is automatically copied to your clipboard. The clipboard gets the plain-text version (no terminal colors), so it pastes cleanly anywhere.
+
+Disable clipboard copy when you just want terminal output:
+
+```bash
+xcat --no-copy src/
+```
+
+### AI context
+
+The primary use case. Dump an entire project directory and paste it straight into an LLM prompt:
+
+```bash
+xcat src/ --max-depth 3 --no-copy > project_context.txt
+```
+
+Or just run it and paste from clipboard:
+
+```bash
+xcat src/
+# output is on clipboard, paste into your LLM of choice
+```
+
+Combine with file filtering to narrow the context:
+
+```bash
+xcat src/ --include-files "*.rs"
+```
+
+## Platform Support
+
+Prebuilt binaries are available for:
+
+- **Linux**: x86_64 (glibc, musl), aarch64, armv7
+- **macOS**: Apple Silicon (aarch64), Intel (x86_64)
+- **Windows**: x86_64, i686
+
+## Clipboard Dependencies
+
+On Linux, clipboard support requires X11 or Wayland libraries. Install them with your package manager:
+
+```bash
+# Debian / Ubuntu
 sudo apt-get install xorg-dev libxcb-shape0-dev libxcb-xfixes0-dev
 
-# For Fedora
+# Fedora
 sudo dnf install libxcb-devel
 ```
 
-### Permission Issues
-
-If you encounter permission issues when running the tool:
-
-```bash
-# Make the binary executable
-chmod +x ./target/release/sdir
-```
-
-## Contributing
-
-Contributions are welcome! Feel free to submit issues or pull requests if you have ideas for improvements or new features.
+On macOS and Windows, no additional dependencies are needed.
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+MIT
