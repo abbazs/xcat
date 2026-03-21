@@ -9,7 +9,10 @@ fn honors_gitignore() -> Result<(), Box<dyn std::error::Error>> {
     fs::write(dir.path().join(".gitignore"), "ignored.txt\n")?;
     fs::write(dir.path().join("ignored.txt"), "ignored")?;
     fs::write(dir.path().join("visible.txt"), "visible")?;
-    std::process::Command::new("git").arg("init").current_dir(dir.path()).output()?;
+    std::process::Command::new("git")
+        .arg("init")
+        .current_dir(dir.path())
+        .output()?;
 
     let assert = Command::cargo_bin("xcat")?
         .current_dir(dir.path())
@@ -31,7 +34,10 @@ fn excludes_lock_files_by_default() -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempdir()?;
     fs::write(dir.path().join("uv.lock"), "")?;
     fs::write(dir.path().join("visible.txt"), "visible")?;
-    std::process::Command::new("git").arg("init").current_dir(dir.path()).output()?;
+    std::process::Command::new("git")
+        .arg("init")
+        .current_dir(dir.path())
+        .output()?;
 
     let assert = Command::cargo_bin("xcat")?
         .current_dir(dir.path())

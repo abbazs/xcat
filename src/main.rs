@@ -164,7 +164,10 @@ fn main() {
     }
 
     // If there were no relevant args but piped stdin wasn't consumed above, include it now.
-    if stdin_content.is_some() && !stdin_consumed && (args.paths.len() == 0 || (args.paths.len() == 1 && args.paths[0] == ".")) {
+    if stdin_content.is_some()
+        && !stdin_consumed
+        && (args.paths.len() == 0 || (args.paths.len() == 1 && args.paths[0] == "."))
+    {
         if let Some(ref content) = stdin_content {
             process_stdin(content, Some("stdin"), &mut output_buffer);
         }
