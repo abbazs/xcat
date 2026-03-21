@@ -121,7 +121,9 @@ fn main() {
 
         // Support "-" as explicit stdin placeholder.
         if path_str == "-" {
-            if let Some(ref content) = stdin_content && !stdin_consumed {
+            if let Some(ref content) = stdin_content
+                && !stdin_consumed
+            {
                 process_stdin(content, Some("-"), &mut output_buffer);
                 stdin_consumed = true;
             } else if stdin_content.is_none() {
@@ -132,7 +134,9 @@ fn main() {
 
         // If user runs `somecmd | xcat` with default path ".", treat piped stdin as the primary input.
         if path_str == "." && args.paths.len() == 1 && stdin_content.is_some() {
-            if let Some(ref content) = stdin_content && !stdin_consumed {
+            if let Some(ref content) = stdin_content
+                && !stdin_consumed
+            {
                 process_stdin(content, Some("stdin"), &mut output_buffer);
                 stdin_consumed = true;
             }
