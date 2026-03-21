@@ -101,10 +101,8 @@ fn main() {
     let mut stdin_content: Option<String> = None;
     if !stdin_is_tty {
         let mut buf = String::new();
-        if let Ok(_) = io::stdin().read_to_string(&mut buf) {
-            if !buf.is_empty() {
-                stdin_content = Some(buf);
-            }
+        if io::stdin().read_to_string(&mut buf).is_ok() && !buf.is_empty() {
+            stdin_content = Some(buf);
         }
     }
 
@@ -123,12 +121,10 @@ fn main() {
 
         // Support "-" as explicit stdin placeholder.
         if path_str == "-" {
-            if let Some(ref content) = stdin_content {
-                if !stdin_consumed {
-                    process_stdin(content, Some("-"), &mut output_buffer);
-                    stdin_consumed = true;
-                }
-            } else {
+            if let Some(ref content) = stdin_content && !stdin_consumed {
+                process_stdin(content, Some("-"), &mut output_buffer);
+                stdin_consumed = true;
+            } else if stdin_content.is_none() {
                 eprintln!("Warning: '-' specified but no data was provided on stdin.");
             }
             continue;
@@ -136,11 +132,9 @@ fn main() {
 
         // If user runs `somecmd | xcat` with default path ".", treat piped stdin as the primary input.
         if path_str == "." && args.paths.len() == 1 && stdin_content.is_some() {
-            if let Some(ref content) = stdin_content {
-                if !stdin_consumed {
-                    process_stdin(content, Some("stdin"), &mut output_buffer);
-                    stdin_consumed = true;
-                }
+            if let Some(ref content) = stdin_content && !stdin_consumed {
+                process_stdin(content, Some("stdin"), &mut output_buffer);
+                stdin_consumed = true;
             }
             continue;
         }
@@ -166,18 +160,15 @@ fn main() {
     // If there were no relevant args but piped stdin wasn't consumed above, include it now.
     if stdin_content.is_some()
         && !stdin_consumed
-        && (args.paths.len() == 0 || (args.paths.len() == 1 && args.paths[0] == "."))
+        && (args.paths.is_empty() || (args.paths.len() == 1 && args.paths[0] == "."))
+        && let Some(ref content) = stdin_content
     {
-        if let Some(ref content) = stdin_content {
-            process_stdin(content, Some("stdin"), &mut output_buffer);
-        }
+        process_stdin(content, Some("stdin"), &mut output_buffer);
     }
 
     // Final clipboard copy (unless disabled). Keep previous behavior: copy entire assembled buffer.
-    if !args.no_copy {
-        if !output_buffer.is_empty() {
-            copy_to_clipboard(&output_buffer);
-        }
+    if !args.no_copy && !output_buffer.is_empty() {
+        copy_to_clipboard(&output_buffer);
     }
 }
 
@@ -249,9 +240,9 @@ fn process_directory(
         println!("{}", root_line.blue().bold());
 
         output_buffer.push_str(&heading);
-        output_buffer.push_str("\n");
+        output_buffer.push('\n');
         output_buffer.push_str(&root_line);
-        output_buffer.push_str("\n");
+        output_buffer.push('\n');
 
         collect_tree_output(
             root_path,
@@ -305,10 +296,8 @@ fn collect_tree_output(
     file_contents: &mut Vec<(PathBuf, String)>,
     include_matcher: &Option<GlobMatcher>,
 ) {
-    if let Some(max) = args.max_depth {
-        if depth >= max {
-            return;
-        }
+    if args.max_depth.is_some_and(|max| depth >= max) {
+        return;
     }
 
     let walker = build_walker(path, Some(1));
@@ -371,10 +360,10 @@ fn collect_tree_output(
             colored_name
         );
 
-        if entry_path.is_file() {
-            if let Ok(content) = fs::read_to_string(entry_path) {
-                file_contents.push((entry_path.to_path_buf(), content));
-            }
+        if entry_path.is_file()
+            && let Ok(content) = fs::read_to_string(entry_path)
+        {
+            file_contents.push((entry_path.to_path_buf(), content));
         }
 
         if entry_path.is_dir() {
@@ -406,14 +395,14 @@ fn build_json_tree(
 ) -> TreeNode {
     let name = path
         .file_name()
-        .unwrap_or_else(|| path.as_os_str())
+        .unwrap_or(path.as_os_str())
         .to_string_lossy()
         .into_owned();
     let is_dir = path.is_dir();
     // This is simplified, a more complex check might be needed depending on desired JSON output for empty/filtered dirs
     let is_empty = is_dir && build_walker(path, Some(1)).count() <= 1;
 
-    let children = if is_dir && max_depth.map_or(true, |max| depth < max) {
+    let children = if is_dir && max_depth.is_none_or(|max| depth < max) {
         let walker = build_walker(path, Some(1));
         let children_nodes: Vec<_> = walker
             .filter_map(Result::ok)
@@ -471,12 +460,11 @@ fn filter_entry(
     if dirs_only && !path.is_dir() {
         return false;
     }
-    if !include_locks {
-        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-            if LOCK_FILE_NAMES.contains(&name) || name.ends_with(".lock") {
-                return false;
-            }
-        }
+    if !include_locks
+        && let Some(name) = path.file_name().and_then(|n| n.to_str())
+        && (LOCK_FILE_NAMES.contains(&name) || name.ends_with(".lock"))
+    {
+        return false;
     }
     true
 }
