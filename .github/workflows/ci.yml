@@ -10,7 +10,7 @@ env:
   CARGO_TERM_COLOR: always
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   lint:
@@ -174,3 +174,95 @@ jobs:
           name: ${{ matrix.target }}-${{ matrix.asset_name }}
           path: dist/
           retention-days: 7
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate date-based tag
+        id: tag
+        run: |
+          DATE=$(date -u +'%Y.%m.%d')
+          # Find existing tags for today and increment counter
+          LATEST=$(git tag --list "v${DATE}.*" --sort=-version:refname | head -n1 || echo "")
+          if [[ -n "$LATEST" ]]; then
+            # Extract counter from v2026.03.21.N
+            COUNTER=$(echo "$LATEST" | sed 's/.*\.\([0-9]*\)/\1/')
+            COUNTER=$((COUNTER + 1))
+          else
+            COUNTER=1
+          fi
+          TAG="v${DATE}.${COUNTER}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Generated tag: ${TAG}"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: "*-xcat-*"
+          merge-multiple: true
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} release-assets/ \;
+          find artifacts -type f ! \( -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} release-assets/ \;
+          echo "Release assets:"
+          ls -la release-assets/
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -v "^${TAG}$" | head -n1 2>/dev/null || echo "")
+
+          {
+            echo "## Release ${TAG}"
+            echo ""
+            if [[ -n "$PREVIOUS_TAG" ]]; then
+              echo "### Changes since ${PREVIOUS_TAG}"
+              echo ""
+              git log --pretty=format:"- %s (%h)" "${PREVIOUS_TAG}..HEAD"
+            else
+              echo "### Recent Changes"
+              echo ""
+              git log --pretty=format:"- %s (%h)" -10
+            fi
+            echo ""
+            echo "## Downloads"
+            echo ""
+            echo "**Linux:**"
+            echo "- x86_64 (glibc): [\`xcat-linux-x86_64\`](https://github.com/${{ github.repository }}/releases/download/${TAG}/xcat-linux-x86_64)"
+            echo "- x86_64 (musl): [\`xcat-linux-x86_64-musl\`](https://github.com/${{ github.repository }}/releases/download/${TAG}/xcat-linux-x86_64-musl)"
+            echo "- ARM64: [\`xcat-linux-aarch64\`](https://github.com/${{ github.repository }}/releases/download/${TAG}/xcat-linux-aarch64)"
+            echo "- ARMv7: [\`xcat-linux-armv7\`](https://github.com/${{ github.repository }}/releases/download/${TAG}/xcat-linux-armv7)"
+            echo ""
+            echo "**macOS:**"
+            echo "- ARM64 (Apple Silicon): [\`xcat-macos-aarch64\`](https://github.com/${{ github.repository }}/releases/download/${TAG}/xcat-macos-aarch64)"
+            echo "- x86_64 (Intel): [\`xcat-macos-x86_64\`](https://github.com/${{ github.repository }}/releases/download/${TAG}/xcat-macos-x86_64)"
+            echo ""
+            echo "**Windows:**"
+            echo "- x86_64: [\`xcat-windows-x86_64.exe\`](https://github.com/${{ github.repository }}/releases/download/${TAG}/xcat-windows-x86_64.exe)"
+            echo "- x86 (32-bit): [\`xcat-windows-i686.exe\`](https://github.com/${{ github.repository }}/releases/download/${TAG}/xcat-windows-i686.exe)"
+          } > release_notes.md
+
+      - name: Create tag and release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: Release ${{ steps.tag.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          body_path: release_notes.md
+          files: release-assets/*
+          draft: false
+          prerelease: false
+          generate_release_notes: false
