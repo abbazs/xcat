@@ -398,15 +398,23 @@ Prebuilt binaries are available for:
 
 ## Clipboard Dependencies
 
-On Linux, clipboard support requires X11 or Wayland libraries. Install them with your package manager:
+On Linux, xcat talks to the clipboard through `arboard`, which auto-detects the session:
 
-```bash
-# Debian / Ubuntu
-sudo apt-get install xorg-dev libxcb-shape0-dev libxcb-xfixes0-dev
-
-# Fedora
-sudo dnf install libxcb-devel
-```
+- **Wayland** (e.g. Ubuntu 22.04+/26.04, Fedora): uses `wl-copy` (from `wl-clipboard`) detached into its own session so the clipboard persists after xcat exits. Requires the `wl-clipboard` package:
+  ```bash
+  # Debian / Ubuntu
+  sudo apt-get install wl-clipboard
+  # Fedora
+  sudo dnf install wl-clipboard
+  ```
+  Falls back to `arboard`'s native backend if `wl-copy` is absent.
+- **X11**: uses `x11rb` via `arboard`. Install the X11 libraries if needed:
+  ```bash
+  # Debian / Ubuntu
+  sudo apt-get install xorg-dev libxcb-shape0-dev libxcb-xfixes0-dev
+  # Fedora
+  sudo dnf install libxcb-devel
+  ```
 
 On macOS and Windows, no additional dependencies are needed.
 

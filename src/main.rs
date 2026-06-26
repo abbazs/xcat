@@ -487,6 +487,14 @@ fn get_dir_name(path: &Path) -> String {
 }
 
 fn copy_to_clipboard(text: &str) {
+    // On Wayland the clipboard only lives while a process serves it. arboard
+    // (via wl-clipboard-rs) forks a daemon, but on systemd-based Wayland
+    // sessions (Ubuntu 22.04+/26.04, Fedora) that daemon is killed when the
+    // process tree exits. We work around this by spawning `wl-copy` in its own
+    // session (setsid) so the daemon survives and keeps serving the clipboard.
+    if std::env::var_os("WAYLAND_DISPLAY").is_some() && try_wl_copy(text) {
+        return;
+    }
     if let Ok(mut clipboard) = arboard::Clipboard::new() {
         if let Err(e) = clipboard.set_text(text.to_owned()) {
             eprintln!("Error copying to clipboard: {}", e);
@@ -494,4 +502,51 @@ fn copy_to_clipboard(text: &str) {
     } else {
         eprintln!("Error: Could not initialize clipboard.");
     }
+}
+
+/// Copy text via `wl-copy`, detached into a new session so the clipboard
+/// daemon survives the parent process exit. Returns `false` if `wl-copy` is
+/// unavailable so the caller can fall back to arboard.
+#[cfg(unix)]
+fn try_wl_copy(text: &str) -> bool {
+    use std::io::Write;
+    use std::os::unix::process::CommandExt;
+    use std::process::{Command, Stdio};
+
+    unsafe extern "C" {
+        fn setsid() -> i32;
+    }
+
+    let mut command = Command::new("wl-copy");
+    command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    // Detach into a new session so the daemon isn't killed when we exit.
+    unsafe {
+        command.pre_exec(|| {
+            setsid();
+            Ok(())
+        });
+    }
+
+    let mut child = match command.spawn() {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+
+    if let Some(stdin) = child.stdin.as_mut()
+        && stdin.write_all(text.as_bytes()).is_err()
+    {
+        let _ = child.kill();
+        return false;
+    }
+    // Close stdin (EOF). Don't wait — the detached daemon serves the clipboard.
+    child.stdin.take();
+    true
+}
+
+#[cfg(not(unix))]
+fn try_wl_copy(_text: &str) -> bool {
+    false
 }
